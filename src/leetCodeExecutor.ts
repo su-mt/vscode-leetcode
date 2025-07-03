@@ -5,7 +5,7 @@ import * as cp from "child_process";
 import * as fse from "fs-extra";
 import * as os from "os";
 import * as path from "path";
-import * as requireFromString from "require-from-string";
+import requireFromString = require("require-from-string");
 import { ExtensionContext } from "vscode";
 import { ConfigurationChangeEvent, Disposable, MessageItem, window, workspace, WorkspaceConfiguration } from "vscode";
 import { Endpoint, IProblem, leetcodeHasInited, supportedPlugins } from "./shared";
@@ -262,7 +262,7 @@ class LeetCodeExecutor implements Disposable {
         }
     }
     
-    public async getDailyChallengeHistory(needTranslation?: boolean, days: number = 30): Promise<any[]> {
+    public async getDailyChallengeHistory(_needTranslation?: boolean, days: number = 30): Promise<any[]> {
         try {
             const https = require('https');
             
