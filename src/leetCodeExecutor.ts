@@ -826,27 +826,33 @@ using namespace std;
         return elements;
     }
 
-    private extractMethodName(codeTemplate: string): string {
+    private extractMethodName(codeTemplate: string): { name: string, paramCount: number } {
         // Ищем публичный метод в классе Solution
-        const methodPattern = /public:\s*[\w\s<>*&:\[\]]*\s+(\w+)\s*\(/;
+        const methodPattern = /public:\s*[\w\s<>*&:\[\]]*\s+(\w+)\s*\(([^)]*)\)/;
         const match = codeTemplate.match(methodPattern);
 
         if (match && match[1]) {
-            console.log('🔧 Найден метод:', match[1]);
-            return match[1];
+            const methodName = match[1];
+            const params = match[2].trim();
+            const paramCount = params === '' ? 0 : params.split(',').length;
+            console.log('🔧 Найден метод:', methodName, 'с', paramCount, 'параметрами');
+            return { name: methodName, paramCount };
         }
 
         // Если не найден паттерн public:, ищем любой метод после класса Solution
-        const anyMethodPattern = /class\s+Solution\s*{[^}]*?[\w\s<>*&:\[\]]*\s+(\w+)\s*\(/;
+        const anyMethodPattern = /class\s+Solution\s*{[^}]*?[\w\s<>*&:\[\]]*\s+(\w+)\s*\(([^)]*)\)/;
         const anyMatch = codeTemplate.match(anyMethodPattern);
 
         if (anyMatch && anyMatch[1] && anyMatch[1] !== 'Solution') {
-            console.log('🔧 Найден метод (альтернативный поиск):', anyMatch[1]);
-            return anyMatch[1];
+            const methodName = anyMatch[1];
+            const params = anyMatch[2].trim();
+            const paramCount = params === '' ? 0 : params.split(',').length;
+            console.log('🔧 Найден метод (альтернативный поиск):', methodName, 'с', paramCount, 'параметрами');
+            return { name: methodName, paramCount };
         }
 
         console.log('⚠️ Метод не найден, используем someMethod');
-        return 'someMethod';
+        return { name: 'someMethod', paramCount: 0 };
     }
 
     private generateCppDebugTemplate(parsedArgs: { args: string[] }, codeTemplate?: string): string {
@@ -922,11 +928,28 @@ int main()
             }
         });
 
-        // Извлекаем название метода из кода
-        const methodName = codeTemplate ? this.extractMethodName(codeTemplate) : 'someMethod';
+        // Извлекаем название метода и количество параметров из кода
+        const methodInfo = codeTemplate ? this.extractMethodName(codeTemplate) : { name: 'someMethod', paramCount: 0 };
+        const methodName = methodInfo.name;
+        const expectedParamCount = methodInfo.paramCount;
 
         if (paramNames.length > 0) {
-            methodCall = `    auto result = sol.${methodName}(${paramNames.join(', ')});`;
+            // Используем только необходимое количество параметров
+            const actualParams = paramNames.slice(0, expectedParamCount);
+
+            if (actualParams.length === expectedParamCount) {
+                methodCall = `    auto result = sol.${methodName}(${actualParams.join(', ')});`;
+            } else if (actualParams.length < expectedParamCount) {
+                // Не хватает параметров
+                const missingCount = expectedParamCount - actualParams.length;
+                const placeholders = Array(missingCount).fill('/* param */');
+                methodCall = `    auto result = sol.${methodName}(${[...actualParams, ...placeholders].join(', ')});`;
+            } else {
+                // Слишком много параметров (не должно происходить с slice)
+                methodCall = `    auto result = sol.${methodName}(${actualParams.join(', ')});`;
+            }
+
+            console.log(`🎯 Метод ${methodName} ожидает ${expectedParamCount} параметров, используем ${actualParams.length}`);
         } else {
             methodCall = `    // auto result = sol.${methodName}(/* укажите нужные параметры */);`;
         }
