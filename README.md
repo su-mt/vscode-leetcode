@@ -152,37 +152,7 @@ code .
 | **Historical Tracking** | ❌ | ✅ **NEW** |
 | Multi-language Support | ✅ | ✅ Enhanced |
 
----
 
-## 🤝 Contributing to This Fork
-
-### 🎯 Focus Areas
-
-This fork focuses on enhancing the daily coding practice experience. Contributions welcome in:
-
-- 🔧 **Performance Optimizations**
-- 🎨 **UI/UX Improvements** 
-- 🌍 **Internationalization**
-- 📊 **Analytics & Tracking**
-- 🎯 **Practice Features**
-
-### 📋 Development Workflow
-
-```bash
-# Fork this repository
-git clone https://github.com/your-username/vscode-leetcode.git
-
-# Create feature branch
-git checkout -b feature/your-enhancement
-
-# Make changes and test
-npm run compile
-npm run lint
-
-# Submit PR to this fork
-```
-
----
 
 ## 📈 Performance & Compatibility
 
@@ -202,23 +172,13 @@ npm run lint
 
 ---
 
-## 🐛 Bug Reports & Feature Requests
-
-### 🔍 For This Fork's Features
-- **Daily Challenges Issues**: [Create Issue](https://github.com/su-mt/vscode-leetcode/issues)
-- **Enhancement Requests**: [Feature Request](https://github.com/su-mt/vscode-leetcode/issues/new?template=feature_request.md)
-
-### 🔄 For Original Extension Issues
-- Please report to: [Official Repository](https://github.com/LeetCode-OpenSource/vscode-leetcode/issues)
-
----
 
 ## 📄 License & Credits
 
 ### 📜 License
 This fork maintains the original MIT License. See [LICENSE](LICENSE) for details.
 
-### 🙏 Credits
+###  Credits
 - **Original Extension**: [LeetCode-OpenSource/vscode-leetcode](https://github.com/LeetCode-OpenSource/vscode-leetcode)
 - **Daily Challenges Enhancement**: [@su-mt](https://github.com/su-mt)
 - **Community Contributors**: See [Contributors](https://github.com/su-mt/vscode-leetcode/graphs/contributors)
@@ -228,14 +188,6 @@ This fork maintains the original MIT License. See [LICENSE](LICENSE) for details
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=LeetCode.vscode-leetcode)
 - [LeetCode Official](https://leetcode.com)
 
----
 
-## 🎉 Star History
-
-⭐ **If this enhanced version helps your coding practice, please star the repository!**
-
-[![Star History Chart](https://api.star-history.com/svg?repos=su-mt/vscode-leetcode&type=Date)](https://star-history.com/#su-mt/vscode-leetcode&Date)
-
----
 
 **Happy Coding! 🚀**
