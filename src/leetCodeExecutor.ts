@@ -460,13 +460,13 @@ using namespace std;
             const beforeEnd = codeTemplate.substring(0, endIndex + endMarker.length);
             const afterEnd = codeTemplate.substring(endIndex + endMarker.length);
 
-            const debugTemplate = this.generateCppDebugTemplate(parsedArgs);
+            const debugTemplate = this.generateCppDebugTemplate(parsedArgs, codeTemplate);
             return beforeEnd + debugTemplate + afterEnd;
         } else {
             // Если маркер не найден, добавляем в конец файла
             const debugTemplate = `
 // @lc code=end
-` + this.generateCppDebugTemplate(parsedArgs);
+` + this.generateCppDebugTemplate(parsedArgs, codeTemplate);
             return codeTemplate + debugTemplate;
         }
     }
@@ -491,13 +491,13 @@ using namespace std;
             const beforeEnd = codeTemplate.substring(0, endIndex + endMarker.length);
             const afterEnd = codeTemplate.substring(endIndex + endMarker.length);
 
-            const debugTemplate = this.generateCppDebugTemplate(parsedArgs);
+            const debugTemplate = this.generateCppDebugTemplate(parsedArgs, codeTemplate);
             return beforeEnd + debugTemplate + afterEnd;
         } else {
             // Если маркер не найден, добавляем в конец файла
             const debugTemplate = `
 // @lc code=end
-` + this.generateCppDebugTemplate(parsedArgs);
+` + this.generateCppDebugTemplate(parsedArgs, codeTemplate);
             return codeTemplate + debugTemplate;
         }
     }
@@ -826,7 +826,30 @@ using namespace std;
         return elements;
     }
 
-    private generateCppDebugTemplate(parsedArgs: { args: string[] }): string {
+    private extractMethodName(codeTemplate: string): string {
+        // Ищем публичный метод в классе Solution
+        const methodPattern = /public:\s*[\w\s<>*&:\[\]]*\s+(\w+)\s*\(/;
+        const match = codeTemplate.match(methodPattern);
+
+        if (match && match[1]) {
+            console.log('🔧 Найден метод:', match[1]);
+            return match[1];
+        }
+
+        // Если не найден паттерн public:, ищем любой метод после класса Solution
+        const anyMethodPattern = /class\s+Solution\s*{[^}]*?[\w\s<>*&:\[\]]*\s+(\w+)\s*\(/;
+        const anyMatch = codeTemplate.match(anyMethodPattern);
+
+        if (anyMatch && anyMatch[1] && anyMatch[1] !== 'Solution') {
+            console.log('🔧 Найден метод (альтернативный поиск):', anyMatch[1]);
+            return anyMatch[1];
+        }
+
+        console.log('⚠️ Метод не найден, используем someMethod');
+        return 'someMethod';
+    }
+
+    private generateCppDebugTemplate(parsedArgs: { args: string[] }, codeTemplate?: string): string {
         if (parsedArgs.args.length === 0) {
             return `
 
@@ -842,45 +865,70 @@ int main()
 `;
         }
 
-        // Определяем типичные паттерны для LeetCode задач
-        const hasArray = parsedArgs.args.some((arg) => arg.startsWith('{'));
-        const hasNumbers = parsedArgs.args.some((arg) => /^\d+$/.test(arg));
-
         let variableDeclarations = '';
         let methodCall = '';
 
-        if (hasArray && hasNumbers) {
-            // Обычный паттерн: массив + число (например, Two Sum, Combination Sum)
-            const arrayArgs = parsedArgs.args.filter((arg) => arg.startsWith('{'));
-            const numberArgs = parsedArgs.args.filter((arg) => /^\d+$/.test(arg));
+        // Анализируем каждый аргумент и создаем соответствующие переменные
+        parsedArgs.args.forEach((arg, index) => {
+            const cleanArg = arg.trim();
 
-            arrayArgs.forEach((arg, index) => {
-                variableDeclarations += `    vector<int> arr${index + 1} = ${arg};\n`;
-            });
+            if (cleanArg.startsWith('{') && cleanArg.endsWith('}')) {
+                // Это массив - определяем тип элементов
+                const content = cleanArg.slice(1, -1).trim();
 
-            numberArgs.forEach((arg, index) => {
-                variableDeclarations += `    int target${index + 1} = ${arg};\n`;
-            });
-
-            if (arrayArgs.length === 1 && numberArgs.length === 1) {
-                methodCall = '    // auto result = sol.someMethod(arr1, target1);';
-            } else {
-                methodCall = '    // auto result = sol.someMethod(/* укажите нужные параметры */);';
-            }
-        } else if (hasArray) {
-            // Только массивы
-            parsedArgs.args.forEach((arg, index) => {
-                if (arg.startsWith('{')) {
-                    variableDeclarations += `    vector<int> arr${index + 1} = ${arg};\n`;
+                if (!content) {
+                    // Пустой массив
+                    variableDeclarations += `    vector<int> arr${index + 1} = {};\n`;
+                } else if (content.includes('"')) {
+                    // Массив строк
+                    variableDeclarations += `    vector<string> arr${index + 1} = ${cleanArg};\n`;
+                } else {
+                    // Массив чисел
+                    variableDeclarations += `    vector<int> arr${index + 1} = ${cleanArg};\n`;
                 }
-            });
-            methodCall = '    // auto result = sol.someMethod(arr1);';
+            } else if (cleanArg.startsWith('"') && cleanArg.endsWith('"')) {
+                // Строка
+                variableDeclarations += `    string str${index + 1} = ${cleanArg};\n`;
+            } else if (/^-?\d+$/.test(cleanArg)) {
+                // Целое число
+                variableDeclarations += `    int num${index + 1} = ${cleanArg};\n`;
+            } else if (/^-?\d*\.\d+$/.test(cleanArg)) {
+                // Число с плавающей точкой
+                variableDeclarations += `    double num${index + 1} = ${cleanArg};\n`;
+            } else if (cleanArg === 'true' || cleanArg === 'false') {
+                // Булево значение
+                variableDeclarations += `    bool flag${index + 1} = ${cleanArg};\n`;
+            } else {
+                // Общий случай
+                variableDeclarations += `    auto param${index + 1} = ${cleanArg};\n`;
+            }
+        });
+
+        // Создаем комментарий для вызова метода
+        const paramNames: string[] = [];
+        parsedArgs.args.forEach((arg, index) => {
+            const cleanArg = arg.trim();
+
+            if (cleanArg.startsWith('{')) {
+                paramNames.push(`arr${index + 1}`);
+            } else if (cleanArg.startsWith('"')) {
+                paramNames.push(`str${index + 1}`);
+            } else if (/^-?\d/.test(cleanArg)) {
+                paramNames.push(`num${index + 1}`);
+            } else if (cleanArg === 'true' || cleanArg === 'false') {
+                paramNames.push(`flag${index + 1}`);
+            } else {
+                paramNames.push(`param${index + 1}`);
+            }
+        });
+
+        // Извлекаем название метода из кода
+        const methodName = codeTemplate ? this.extractMethodName(codeTemplate) : 'someMethod';
+
+        if (paramNames.length > 0) {
+            methodCall = `    auto result = sol.${methodName}(${paramNames.join(', ')});`;
         } else {
-            // Только числа или другие типы
-            parsedArgs.args.forEach((arg, index) => {
-                variableDeclarations += `    auto param${index + 1} = ${arg};\n`;
-            });
-            methodCall = '    // auto result = sol.someMethod(param1);';
+            methodCall = `    // auto result = sol.${methodName}(/* укажите нужные параметры */);`;
         }
 
         return `
@@ -892,7 +940,7 @@ int main()
     // Тестовые данные:
 ${variableDeclarations}
     ${methodCall}
-    // cout << "Result: " << result << endl;
+
 
     return 0;
 }
