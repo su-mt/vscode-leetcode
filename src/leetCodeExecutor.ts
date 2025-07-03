@@ -1,4 +1,5 @@
-// Copyright (c) jdneo. All rights reserved.
+// Copyright (c) mt. All rights reserved.
+// Based on original work by jdneo.
 // Licensed under the MIT license.
 
 import * as cp from "child_process";
@@ -900,9 +901,9 @@ using namespace std;
 int main()
 {
     Solution sol;
-    // Добавьте тестовые данные ниже
+
     // auto result = sol.someMethod(/* your test data */);
-    // cout << "Result: " << result << endl;
+
 
     return 0;
 }
@@ -989,7 +990,7 @@ int main()
 
             console.log(`🎯 Метод ${methodName} ожидает ${expectedParamCount} параметров, используем ${actualParams.length}`);
         } else {
-            methodCall = `    // auto result = sol.${methodName}(/* укажите нужные параметры */);`;
+            methodCall = `    // auto result = sol.${methodName}(/* set input */);`;
         }
 
         return `
@@ -998,7 +999,7 @@ int main()
 {
     Solution sol;
 
-    // Тестовые данные:
+    // Test Data
 ${variableDeclarations}
     ${methodCall}
 

@@ -1,4 +1,5 @@
-// Copyright (c) jdneo. All rights reserved.
+// Copyright (c) mt. All rights reserved.
+// Based on original work by jdneo.
 // Licensed under the MIT license.
 
 import * as vscode from "vscode";
