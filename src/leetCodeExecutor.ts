@@ -136,6 +136,11 @@ class LeetCodeExecutor implements Disposable {
                 codeTemplate = cppHeaders + codeTemplate;
             }
 
+            // Add debug template for C++
+            if (language === "cpp" || language === "c") {
+                codeTemplate = this.addCppDebugTemplate(codeTemplate);
+            }
+
             await fse.writeFile(filePath, codeTemplate);
         }
     }
@@ -431,6 +436,44 @@ class LeetCodeExecutor implements Disposable {
 using namespace std;
 
 `;
+    }
+
+    public addCppDebugTemplate(codeTemplate: string): string {
+        // Ищем маркер окончания кода LeetCode
+        const endMarker = "// @lc code=end";
+        const endIndex = codeTemplate.indexOf(endMarker);
+        
+        if (endIndex !== -1) {
+            // Если маркер найден, добавляем debug template после него
+            const beforeEnd = codeTemplate.substring(0, endIndex + endMarker.length);
+            const afterEnd = codeTemplate.substring(endIndex + endMarker.length);
+            
+            const debugTemplate = `
+
+int main ()
+{
+    Solution sol;
+    
+
+    return 0;
+}
+`;
+            return beforeEnd + debugTemplate + afterEnd;
+        } else {
+            // Если маркер не найден, добавляем в конец файла
+            const debugTemplate = `
+// @lc code=end
+
+int main ()
+{
+    Solution sol;
+    
+
+    return 0;
+}
+`;
+            return codeTemplate + debugTemplate;
+        }
     }
 
 }
