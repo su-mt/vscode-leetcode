@@ -126,6 +126,13 @@ class LeetCodeExecutor implements Disposable {
             cmd.push("-T"); // use -T to force English version
         }
 
+        console.log('🔍 DEBUG: showProblem called with:', {
+            problemId: problemNode.id,
+            problemName: problemNode.name,
+            language: language,
+            shouldAddHeaders: shouldAddHeaders
+        });
+
         if (!await fse.pathExists(filePath)) {
             await fse.createFile(filePath);
             let codeTemplate: string = await this.executeCommandWithProgressEx("Fetching problem data...", this.nodeExecutable, cmd);
@@ -138,8 +145,28 @@ class LeetCodeExecutor implements Disposable {
 
             // Add debug template for C++ with enhanced parsing
             if (language === "cpp" || language === "c") {
-                // Получаем markdown описание задачи для парсинга
-                const markdownDescription = await this.getDescription(problemNode.id, needTranslation);
+                console.log('🧩 DEBUG: Попытка получить описание для парсинга тестовых данных...');
+                let markdownDescription = '';
+
+                try {
+                    // Сначала пробуем стандартный CLI метод
+                    markdownDescription = await this.getDescription(problemNode.id, needTranslation);
+                    console.log('✅ DEBUG: Описание получено через CLI, длина:', markdownDescription.length);
+                } catch (error) {
+                    console.log('⚠️ DEBUG: CLI метод не сработал, пробуем GraphQL...', error.message);
+
+                    // Если CLI не работает и есть titleSlug, пробуем GraphQL
+                    if (problemNode.titleSlug) {
+                        try {
+                            markdownDescription = await this.getDescriptionViaGraphQL(problemNode.titleSlug, needTranslation);
+                            console.log('✅ DEBUG: Описание получено через GraphQL, длина:', markdownDescription.length);
+                        } catch (graphqlError) {
+                            console.log('❌ DEBUG: GraphQL тоже не сработал:', graphqlError.message);
+                        }
+                    }
+                }
+
+                // Добавляем debug шаблон (даже если описание пустое)
                 codeTemplate = this.addCppDebugTemplateWithDescription(codeTemplate, markdownDescription);
             }
 
@@ -405,7 +432,8 @@ class LeetCodeExecutor implements Disposable {
                                 locked: question.paidOnly || false,
                                 state: question.status || "Unknown",
                                 date: challenge.date,
-                                link: challenge.link
+                                link: challenge.link,
+                                titleSlug: question.titleSlug // Добавляем titleSlug для GraphQL запросов
                             };
                         });
 
@@ -554,7 +582,7 @@ using namespace std;
 
     private extractTestDataFromMarkdown(markdownContent: string): string[] {
         const testData: string[] = [];
-        const seenValues = new Set<string>(); // Для отслеживания дубликатов
+        const seenVariables = new Set<string>(); // Отслеживаем только имена переменных
 
         console.log('🔍 DEBUG: Начинаем парсинг markdown');
         console.log('🔍 DEBUG: Ищем паттерны Input в тексте...');
@@ -581,7 +609,7 @@ using namespace std;
                 console.log(`🔧 После декодирования HTML:`, inputLine);
 
                 // Парсим переменные с учетом массивов, строк и чисел
-                this.parseInputLine(inputLine, testData, seenValues);
+                this.parseInputLine(inputLine, testData, seenVariables);
             }
         }
 
@@ -612,7 +640,7 @@ using namespace std;
         });
     }
 
-    private parseInputLine(inputLine: string, testData: string[], seenValues: Set<string>): void {
+    private parseInputLine(inputLine: string, testData: string[], seenVariables: Set<string>): void {
         console.log('🔧 DEBUG: Парсим строку Input:', inputLine);
 
         // Удаляем HTML теги и лишние символы в начале строки
@@ -636,6 +664,22 @@ using namespace std;
 
             const varName = varMatch[1];
             index += varMatch[0].length;
+
+            // Проверяем, встречали ли уже эту переменную
+            if (seenVariables.has(varName)) {
+                console.log(`⚠️ Пропускаем дубликат переменной: ${varName}`);
+                // Пропускаем значение до следующей переменной или конца строки
+                while (index < cleanLine.length) {
+                    const char = cleanLine[index];
+                    if (char === ',' && cleanLine.substring(index + 1).match(/\s*\w+\s*=/)) {
+                        // Нашли запятую перед следующей переменной
+                        index++;
+                        break;
+                    }
+                    index++;
+                }
+                continue;
+            }
 
             // Теперь извлекаем значение
             let value = '';
@@ -678,15 +722,9 @@ using namespace std;
 
             if (value.trim()) {
                 const cleanValue = value.trim();
-                const key = `${varName}:${cleanValue}`; // Ключ для дедупликации
-
-                if (!seenValues.has(key)) {
-                    seenValues.add(key);
-                    testData.push(cleanValue);
-                    console.log('✅ Добавлено значение:', `${varName} = ${cleanValue}`);
-                } else {
-                    console.log('⚠️ Пропущен дубликат:', `${varName} = ${cleanValue}`);
-                }
+                seenVariables.add(varName); // Помечаем переменную как уже обработанную
+                testData.push(cleanValue);
+                console.log('✅ Добавлено значение:', `${varName} = ${cleanValue}`);
             }
 
             // Пропускаем запятую и пробелы
@@ -968,6 +1006,103 @@ ${variableDeclarations}
     return 0;
 }
 `;
+    }
+
+    /**
+     * Получает описание задачи через GraphQL API LeetCode для Daily Challenges
+     */
+    public async getDescriptionViaGraphQL(titleSlug: string, needTranslation: boolean = false): Promise<string> {
+        try {
+            const https = require('https');
+
+            const query = `
+                query questionContent($titleSlug: String!) {
+                    question(titleSlug: $titleSlug) {
+                        content
+                        title
+                        titleSlug
+                        difficulty
+                        likes
+                        dislikes
+                        sampleTestCase
+                        exampleTestcases
+                        categoryTitle
+                        topicTags {
+                            name
+                        }
+                        companyTagStats
+                    }
+                }
+            `;
+
+            const postData = JSON.stringify({
+                query: query,
+                variables: { titleSlug: titleSlug }
+            });
+
+            const hostname = needTranslation ? 'leetcode.cn' : 'leetcode.com';
+            const options = {
+                hostname: hostname,
+                port: 443,
+                path: '/graphql',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'User-Agent': 'vscode-leetcode-extension'
+                }
+            };
+
+            const response = await new Promise<string>((resolve, reject) => {
+                const req = https.request(options, (res: any) => {
+                    let data = '';
+                    res.on('data', (chunk: any) => {
+                        data += chunk;
+                    });
+                    res.on('end', () => {
+                        resolve(data);
+                    });
+                });
+
+                req.on('error', (error: any) => {
+                    reject(error);
+                });
+
+                req.write(postData);
+                req.end();
+            });
+
+            const jsonData = JSON.parse(response);
+            if (jsonData.data && jsonData.data.question) {
+                const question = jsonData.data.question;
+
+                // Формируем markdown описание в том же формате, что ожидает парсер
+                // Включаем HTML контент с примерами Input/Output
+                const markdown = `
+# ${question.title}
+
+${question.content}
+
+**Difficulty:** ${question.difficulty}
+**Likes:** ${question.likes}
+**Dislikes:** ${question.dislikes}
+**Category:** ${question.categoryTitle}
+**Tags:** ${(question.topicTags || []).map((tag: any) => tag.name).join(', ')}
+
+## Test Cases
+${question.exampleTestcases || question.sampleTestCase || ''}
+                `.trim();
+
+                console.log('✅ DEBUG: Получено описание через GraphQL, содержит "Input":', markdown.includes('Input'));
+                return markdown;
+            }
+
+            throw new Error('No question data found in GraphQL response');
+
+        } catch (error) {
+            console.log('❌ DEBUG: Ошибка при получении описания через GraphQL:', error);
+            throw error;
+        }
     }
 
 }

@@ -6,6 +6,8 @@
 
 > **Enhanced fork of the LeetCode VS Code extension with Daily Challenges support and C++ Debug Templates.**
 
+![C++ Debug Templates Demo](docs/imgs/image.png)
+
 ## 🚀 Quick Start
 
 ```bash

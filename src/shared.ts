@@ -81,6 +81,7 @@ export interface IProblem {
     passRate: string;
     companies: string[];
     tags: string[];
+    titleSlug?: string; // Добавляем titleSlug для Daily Challenges
 }
 
 export const defaultProblem: IProblem = {
