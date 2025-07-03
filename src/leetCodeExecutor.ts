@@ -136,9 +136,11 @@ class LeetCodeExecutor implements Disposable {
                 codeTemplate = cppHeaders + codeTemplate;
             }
 
-            // Add debug template for C++
+            // Add debug template for C++ with enhanced parsing
             if (language === "cpp" || language === "c") {
-                codeTemplate = this.addCppDebugTemplate(codeTemplate);
+                // Получаем markdown описание задачи для парсинга
+                const markdownDescription = await this.getDescription(problemNode.id, needTranslation);
+                codeTemplate = this.addCppDebugTemplateWithDescription(codeTemplate, markdownDescription);
             }
 
             await fse.writeFile(filePath, codeTemplate);
@@ -173,7 +175,13 @@ class LeetCodeExecutor implements Disposable {
         if (!needTranslation) {
             cmd.push("-T");
         }
-        return await this.executeCommandWithProgressEx("Fetching problem description...", this.nodeExecutable, cmd);
+
+        console.log('📥 DEBUG: Выполняем команду для получения markdown:', cmd.join(' '));
+        const result = await this.executeCommandWithProgressEx("Fetching problem description...", this.nodeExecutable, cmd);
+        console.log('📥 DEBUG: Получен markdown, длина:', result.length);
+        console.log('📥 DEBUG: Содержит "Input":', result.includes('Input'));
+
+        return result;
     }
 
     public async listSessions(): Promise<string> {
@@ -442,38 +450,453 @@ using namespace std;
         // Ищем маркер окончания кода LeetCode
         const endMarker = "// @lc code=end";
         const endIndex = codeTemplate.indexOf(endMarker);
-        
+
+        // Извлекаем примеры тестовых данных из комментариев
+        const testData = this.extractTestDataFromComments(codeTemplate);
+        const parsedArgs = this.parseTestDataForCpp(testData);
+
         if (endIndex !== -1) {
             // Если маркер найден, добавляем debug template после него
             const beforeEnd = codeTemplate.substring(0, endIndex + endMarker.length);
             const afterEnd = codeTemplate.substring(endIndex + endMarker.length);
-            
-            const debugTemplate = `
 
-int main ()
-{
-    Solution sol;
-    
-
-    return 0;
-}
-`;
+            const debugTemplate = this.generateCppDebugTemplate(parsedArgs);
             return beforeEnd + debugTemplate + afterEnd;
         } else {
             // Если маркер не найден, добавляем в конец файла
             const debugTemplate = `
 // @lc code=end
+` + this.generateCppDebugTemplate(parsedArgs);
+            return codeTemplate + debugTemplate;
+        }
+    }
 
-int main ()
+    public addCppDebugTemplateWithDescription(codeTemplate: string, markdownDescription: string): string {
+        // Добавляем отладочную информацию
+        console.log('📋 DEBUG: Markdown описание получено, длина:', markdownDescription.length);
+        console.log('📋 DEBUG: Первые 500 символов markdown:', markdownDescription.substring(0, 500));
+        console.log('📋 DEBUG: Содержит "Input":', markdownDescription.includes('Input'));
+        console.log('📋 DEBUG: Содержит "**Input:**":', markdownDescription.includes('**Input:**'));
+
+        // Ищем маркер окончания кода LeetCode
+        const endMarker = "// @lc code=end";
+        const endIndex = codeTemplate.indexOf(endMarker);
+
+        // Извлекаем примеры тестовых данных из markdown описания
+        const testData = this.extractTestDataFromMarkdown(markdownDescription);
+        const parsedArgs = this.parseTestDataForCpp(testData);
+
+        if (endIndex !== -1) {
+            // Если маркер найден, добавляем debug template после него
+            const beforeEnd = codeTemplate.substring(0, endIndex + endMarker.length);
+            const afterEnd = codeTemplate.substring(endIndex + endMarker.length);
+
+            const debugTemplate = this.generateCppDebugTemplate(parsedArgs);
+            return beforeEnd + debugTemplate + afterEnd;
+        } else {
+            // Если маркер не найден, добавляем в конец файла
+            const debugTemplate = `
+// @lc code=end
+` + this.generateCppDebugTemplate(parsedArgs);
+            return codeTemplate + debugTemplate;
+        }
+    }
+
+    private extractTestDataFromComments(codeTemplate: string): string[] {
+        const testData: string[] = [];
+
+        // Ищем Input: в markdown блоках Examples
+        const inputPattern = /\*\*Input:\*\*\s*([^\n*]+)/g;
+        let match;
+
+        while ((match = inputPattern.exec(codeTemplate)) !== null) {
+            const inputLine = match[1].trim();
+            console.log('🎯 Найден Input:', inputLine);
+
+            // Парсим переменные вида "height = [1,8,6,2,5,4,8,3,7]", "target = 8"
+            const variableMatches = inputLine.match(/(\w+)\s*=\s*(\[[^\]]+\]|\d+|"[^"]*")/g);
+            if (variableMatches) {
+                for (const varMatch of variableMatches) {
+                    const valueMatch = varMatch.match(/=\s*(.+)$/);
+                    if (valueMatch) {
+                        testData.push(valueMatch[1].trim());
+                        console.log('✅ Добавлено значение:', valueMatch[1].trim());
+                    }
+                }
+            }
+        }
+
+        // Если не нашли в markdown, ищем простые Input: в тексте
+        if (testData.length === 0) {
+            const simpleInputPattern = /Input:\s*([^\n]+)/g;
+            while ((match = simpleInputPattern.exec(codeTemplate)) !== null) {
+                const inputLine = match[1].trim();
+                console.log('🎯 Найден обычный Input:', inputLine);
+
+                const variableMatches = inputLine.match(/(\w+)\s*=\s*(\[[^\]]+\]|\d+|"[^"]*")/g);
+                if (variableMatches) {
+                    for (const varMatch of variableMatches) {
+                        const valueMatch = varMatch.match(/=\s*(.+)$/);
+                        if (valueMatch) {
+                            testData.push(valueMatch[1].trim());
+                            console.log('✅ Добавлено значение:', valueMatch[1].trim());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Убираем дубликаты
+        const uniqueTestData = [...new Set(testData)];
+        console.log('🔍 Итоговые тестовые данные:', uniqueTestData);
+        return uniqueTestData;
+    }
+
+    private extractTestDataFromMarkdown(markdownContent: string): string[] {
+        const testData: string[] = [];
+        const seenValues = new Set<string>(); // Для отслеживания дубликатов
+
+        console.log('🔍 DEBUG: Начинаем парсинг markdown');
+        console.log('🔍 DEBUG: Ищем паттерны Input в тексте...');
+
+        // Ищем различные варианты Input в markdown/HTML
+        const patterns = [
+            /<strong>Input:<\/strong>\s*([^\n<]+)/g,          // HTML: <strong>Input:</strong> nums = [2,7,11,15], target = 9
+            /\*\*Input:\*\*\s*([^\n]+)/g,                     // Markdown: **Input:** nums = [2,7,11,15], target = 9
+            /<strong>Input<\/strong>:\s*([^\n<]+)/g           // HTML вариант: <strong>Input</strong>: nums = [2,7,11,15], target = 9
+        ];
+
+        for (let i = 0; i < patterns.length; i++) {
+            const pattern = patterns[i];
+            console.log(`🔍 DEBUG: Проверяем паттерн ${i + 1}:`, pattern.source);
+
+            let match;
+            pattern.lastIndex = 0; // Сбрасываем индекс для корректной работы exec
+            while ((match = pattern.exec(markdownContent)) !== null) {
+                let inputLine = match[1].trim();
+                console.log(`🎯 Найден Input (паттерн ${i + 1}):`, inputLine);
+
+                // Декодируем HTML entities
+                inputLine = this.decodeHtmlEntities(inputLine);
+                console.log(`🔧 После декодирования HTML:`, inputLine);
+
+                // Парсим переменные с учетом массивов, строк и чисел
+                this.parseInputLine(inputLine, testData, seenValues);
+            }
+        }
+
+        if (testData.length === 0) {
+            console.log('⚠️ DEBUG: Не найдено ни одного Input! Проверим содержимое markdown...');
+            console.log('📝 DEBUG: Весь markdown текст (первые 1000 символов):');
+            console.log(markdownContent.substring(0, 1000));
+            console.log('📝 DEBUG: Поиск слова "Input" (регистронезависимо):',
+                        (markdownContent.match(/input/gi) || []).length, 'вхождений');
+        }
+
+        console.log('🔍 Итоговые тестовые данные из markdown:', testData);
+        return testData;
+    }
+
+    private decodeHtmlEntities(text: string): string {
+        const entities: { [key: string]: string } = {
+            '&quot;': '"',
+            '&amp;': '&',
+            '&lt;': '<',
+            '&gt;': '>',
+            '&#39;': "'",
+            '&apos;': "'"
+        };
+
+        return text.replace(/&[a-zA-Z0-9#]+;/g, (match) => {
+            return entities[match] || match;
+        });
+    }
+
+    private parseInputLine(inputLine: string, testData: string[], seenValues: Set<string>): void {
+        console.log('🔧 DEBUG: Парсим строку Input:', inputLine);
+
+        // Удаляем HTML теги и лишние символы в начале строки
+        let cleanLine = inputLine
+            .replace(/^<\/?\w+[^>]*>/g, '')  // Удаляем HTML теги в начале
+            .replace(/^\*\*\s*/, '')        // Удаляем markdown **
+            .trim();
+
+        console.log('🔧 DEBUG: Очищенная строка:', cleanLine);
+
+        // Паттерн для поиска переменных вида: var = value
+        // value может быть: [массив], "строка", число
+        let index = 0;
+
+        while (index < cleanLine.length) {
+            // Ищем название переменной и знак =
+            const varMatch = cleanLine.substring(index).match(/^(\w+)\s*=\s*/);
+            if (!varMatch) {
+                break;
+            }
+
+            const varName = varMatch[1];
+            index += varMatch[0].length;
+
+            // Теперь извлекаем значение
+            let value = '';
+            let char = cleanLine[index];
+
+            if (char === '[') {
+                // Массив - ищем закрывающую скобку
+                let bracketCount = 1;
+                value += char;
+                index++;
+
+                while (index < cleanLine.length && bracketCount > 0) {
+                    char = cleanLine[index];
+                    value += char;
+                    if (char === '[') bracketCount++;
+                    else if (char === ']') bracketCount--;
+                    index++;
+                }
+            } else if (char === '"' || char === "'" || char === '`') {
+                // Строка - ищем закрывающую кавычку
+                const quote = char;
+                value += char;
+                index++;
+
+                while (index < cleanLine.length) {
+                    char = cleanLine[index];
+                    value += char;
+                    index++;
+                    if (char === quote) break;
+                }
+            } else {
+                // Число или другое значение - читаем до запятой или конца строки
+                while (index < cleanLine.length) {
+                    char = cleanLine[index];
+                    if (char === ',' || char === '\n') break;
+                    value += char;
+                    index++;
+                }
+            }
+
+            if (value.trim()) {
+                const cleanValue = value.trim();
+                const key = `${varName}:${cleanValue}`; // Ключ для дедупликации
+
+                if (!seenValues.has(key)) {
+                    seenValues.add(key);
+                    testData.push(cleanValue);
+                    console.log('✅ Добавлено значение:', `${varName} = ${cleanValue}`);
+                } else {
+                    console.log('⚠️ Пропущен дубликат:', `${varName} = ${cleanValue}`);
+                }
+            }
+
+            // Пропускаем запятую и пробелы
+            while (index < cleanLine.length && (cleanLine[index] === ',' || cleanLine[index] === ' ')) {
+                index++;
+            }
+        }
+    }
+
+    private parseTestDataForCpp(testData: string[]): { args: string[] } {
+        const args: string[] = [];
+        console.log('🔧 Парсинг тестовых данных:', testData);
+
+        if (testData.length === 0) {
+            console.log('⚠️ Нет тестовых данных для парсинга');
+            return { args: [] };
+        }
+
+        for (const data of testData) {
+            if (!data) continue;
+
+            const cleanData = data.trim();
+            console.log('📝 Обрабатываем:', cleanData);
+
+            // Форматируем для C++
+            const formattedValue = this.formatValueForCpp(cleanData);
+            args.push(formattedValue);
+            console.log('✅ Добавлено:', formattedValue);
+        }
+
+        console.log('🎯 Финальные аргументы:', args);
+        return { args };
+    }
+
+    private formatValueForCpp(value: string): string {
+        value = value.trim();
+
+        // Массивы
+        if (value.startsWith('[') && value.endsWith(']')) {
+            const arrayContent = value.slice(1, -1).trim();
+            if (!arrayContent) {
+                return '{}'; // Пустой массив
+            }
+
+            // Проверяем, содержит ли массив строки
+            if (arrayContent.includes('"') || arrayContent.includes("'")) {
+                // Массив строк
+                const elements = this.parseArrayElements(arrayContent);
+                const strings = elements.map((elem) => {
+                    const cleaned = elem.replace(/^['"`]|['"`]$/g, '');
+                    return `"${cleaned}"`;
+                });
+                return `{${strings.join(', ')}}`;
+            } else {
+                // Массив чисел или других примитивов
+                const elements = this.parseArrayElements(arrayContent);
+                const formatted = elements.map((elem) => {
+                    const cleaned = elem.trim();
+                    if (cleaned === 'true' || cleaned === 'false') {
+                        return cleaned;
+                    } else if (cleaned === 'null') {
+                        return 'nullptr';
+                    }
+                    return cleaned;
+                });
+                return `{${formatted.join(', ')}}`;
+            }
+        }
+
+        // Строки в кавычках
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'")) ||
+            (value.startsWith('`') && value.endsWith('`'))) {
+            const content = value.slice(1, -1);
+            return `"${content}"`;
+        }
+
+        // Числа
+        if (/^-?\d+$/.test(value)) {
+            return value; // Целое число
+        }
+
+        if (/^-?\d*\.\d+$/.test(value)) {
+            return value; // Число с плавающей точкой
+        }
+
+        // Булевы значения
+        if (value === 'true' || value === 'false') {
+            return value;
+        }
+
+        // Null значения
+        if (value === 'null' || value === 'nullptr') {
+            return 'nullptr';
+        }
+
+        // Если ничего не подошло, считаем строкой
+        return `"${value}"`;
+    }
+
+    private parseArrayElements(arrayContent: string): string[] {
+        const elements: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        let quoteChar = '';
+        let depth = 0;
+
+        for (const char of arrayContent) {
+            if (!inQuotes && (char === '"' || char === "'" || char === '`')) {
+                inQuotes = true;
+                quoteChar = char;
+                current += char;
+            } else if (inQuotes && char === quoteChar) {
+                inQuotes = false;
+                quoteChar = '';
+                current += char;
+            } else if (!inQuotes && char === '[') {
+                depth++;
+                current += char;
+            } else if (!inQuotes && char === ']') {
+                depth--;
+                current += char;
+            } else if (!inQuotes && char === ',' && depth === 0) {
+                if (current.trim()) {
+                    elements.push(current.trim());
+                }
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        if (current.trim()) {
+            elements.push(current.trim());
+        }
+
+        return elements;
+    }
+
+    private generateCppDebugTemplate(parsedArgs: { args: string[] }): string {
+        if (parsedArgs.args.length === 0) {
+            return `
+
+int main()
 {
     Solution sol;
-    
+    // Добавьте тестовые данные ниже
+    // auto result = sol.someMethod(/* your test data */);
+    // cout << "Result: " << result << endl;
 
     return 0;
 }
 `;
-            return codeTemplate + debugTemplate;
         }
+
+        // Определяем типичные паттерны для LeetCode задач
+        const hasArray = parsedArgs.args.some((arg) => arg.startsWith('{'));
+        const hasNumbers = parsedArgs.args.some((arg) => /^\d+$/.test(arg));
+
+        let variableDeclarations = '';
+        let methodCall = '';
+
+        if (hasArray && hasNumbers) {
+            // Обычный паттерн: массив + число (например, Two Sum, Combination Sum)
+            const arrayArgs = parsedArgs.args.filter((arg) => arg.startsWith('{'));
+            const numberArgs = parsedArgs.args.filter((arg) => /^\d+$/.test(arg));
+
+            arrayArgs.forEach((arg, index) => {
+                variableDeclarations += `    vector<int> arr${index + 1} = ${arg};\n`;
+            });
+
+            numberArgs.forEach((arg, index) => {
+                variableDeclarations += `    int target${index + 1} = ${arg};\n`;
+            });
+
+            if (arrayArgs.length === 1 && numberArgs.length === 1) {
+                methodCall = '    // auto result = sol.someMethod(arr1, target1);';
+            } else {
+                methodCall = '    // auto result = sol.someMethod(/* укажите нужные параметры */);';
+            }
+        } else if (hasArray) {
+            // Только массивы
+            parsedArgs.args.forEach((arg, index) => {
+                if (arg.startsWith('{')) {
+                    variableDeclarations += `    vector<int> arr${index + 1} = ${arg};\n`;
+                }
+            });
+            methodCall = '    // auto result = sol.someMethod(arr1);';
+        } else {
+            // Только числа или другие типы
+            parsedArgs.args.forEach((arg, index) => {
+                variableDeclarations += `    auto param${index + 1} = ${arg};\n`;
+            });
+            methodCall = '    // auto result = sol.someMethod(param1);';
+        }
+
+        return `
+
+int main()
+{
+    Solution sol;
+
+    // Тестовые данные:
+${variableDeclarations}
+    ${methodCall}
+    // cout << "Result: " << result << endl;
+
+    return 0;
+}
+`;
     }
 
 }

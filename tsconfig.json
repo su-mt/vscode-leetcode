@@ -1,13 +1,14 @@
 {
     "compilerOptions": {
     	"esModuleInterop": true,
-    	"noUnusedParameters": false,
         "module": "commonjs",
         "target": "es6",
         "outDir": "out",
         "lib": [
-            "es6"
+            "es6",
+            "dom"
         ],
+        "types": ["node"],
         "sourceMap": true,
         "rootDir": ".",
         "noUnusedLocals": true,

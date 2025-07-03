@@ -721,6 +721,7 @@
         "vs-publish": "vsce publish"
     },
     "devDependencies": {
+        "@types/cheerio": "^0.22.35",
         "@types/fs-extra": "^9.0.11",
         "@types/linkify-it": "^5.0.0",
         "@types/lodash": "^4.14.170",
@@ -734,6 +735,7 @@
     },
     "dependencies": {
         "axios": "^1.6.8",
+        "cheerio": "^1.1.0",
         "fs-extra": "^10.0.0",
         "highlight.js": "^10.7.2",
         "lodash": "^4.17.21",
