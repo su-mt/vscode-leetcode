@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as hljs from "highlight.js";
-import * as MarkdownIt from "markdown-it";
+import MarkdownIt from "markdown-it";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -72,7 +72,7 @@ class MarkdownEngine implements vscode.Disposable {
     }
 
     private initEngine(): MarkdownIt {
-        const md: any = new (MarkdownIt as any)({
+        const md: MarkdownIt = new MarkdownIt({
             linkify: true,
             typographer: true,
             highlight: (code: string, lang?: string): string => {

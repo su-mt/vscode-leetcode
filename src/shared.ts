@@ -104,7 +104,7 @@ export enum Category {
     Daily = "Daily",
 }
 
-export const supportedPlugins: string[] = ["company", "solution.discuss", "leetcode.cn"];
+export const supportedPlugins: string[] = []; // Отключено для избежания конфликтов с оригинальным расширением
 
 export enum DescriptionConfiguration {
     InWebView = "In Webview",

@@ -8,7 +8,7 @@ import * as path from "path";
 import requireFromString = require("require-from-string");
 import { ExtensionContext } from "vscode";
 import { ConfigurationChangeEvent, Disposable, MessageItem, window, workspace, WorkspaceConfiguration } from "vscode";
-import { Endpoint, IProblem, leetcodeHasInited, supportedPlugins } from "./shared";
+import { IProblem, leetcodeHasInited, supportedPlugins } from "./shared";
 import { executeCommand, executeCommandWithProgress } from "./utils/cpUtils";
 import { DialogOptions, openUrl } from "./utils/uiUtils";
 import * as wsl from "./utils/wslUtils";
@@ -37,12 +37,18 @@ class LeetCodeExecutor implements Disposable {
     }
 
     public async meetRequirements(context: ExtensionContext): Promise<boolean> {
+        console.log("LeetCode: Checking requirements...");
+
         const hasInited: boolean | undefined = context.globalState.get(leetcodeHasInited);
         if (!hasInited) {
+            console.log("LeetCode: Extension not initialized, removing old cache...");
             await this.removeOldCache();
         }
+
+        console.log("LeetCode: Node executable path:", this.nodeExecutable);
         if (this.nodeExecutable !== "node") {
             if (!await fse.pathExists(this.nodeExecutable)) {
+                console.error("LeetCode: Node.js executable not found at:", this.nodeExecutable);
                 throw new Error(`The Node.js executable does not exist on path ${this.nodeExecutable}`);
             }
             // Wrap the executable with "" to avoid space issue in the path.
@@ -51,9 +57,13 @@ class LeetCodeExecutor implements Disposable {
                 this.nodeExecutable = await toWslPath(this.nodeExecutable);
             }
         }
+
+        console.log("LeetCode: Testing Node.js...");
         try {
             await this.executeCommandEx(this.nodeExecutable, ["-v"]);
+            console.log("LeetCode: Node.js test successful");
         } catch (error) {
+            console.error("LeetCode: Node.js test failed:", error);
             const choice: MessageItem | undefined = await window.showErrorMessage(
                 "LeetCode extension needs Node.js installed in environment path",
                 DialogOptions.open,
@@ -63,16 +73,24 @@ class LeetCodeExecutor implements Disposable {
             }
             return false;
         }
+
+        console.log("LeetCode: Checking plugins...");
         for (const plugin of supportedPlugins) {
+            console.log("LeetCode: Checking plugin:", plugin);
             try { // Check plugin
                 await this.executeCommandEx(this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "plugin", "-e", plugin]);
+                console.log("LeetCode: Plugin", plugin, "is available");
             } catch (error) { // Remove old cache that may cause the error download plugin and activate
-                await this.removeOldCache();
-                await this.executeCommandEx(this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "plugin", "-i", plugin]);
+                console.log("LeetCode: Plugin", plugin, "not found, installing...");
+              //  await this.removeOldCache();
+              //  await this.executeCommandEx(this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "plugin", "-i", plugin]);
+                console.log("LeetCode: Plugin", plugin, "installed successfully");
             }
         }
+
         // Set the global state HasInited true to skip delete old cache after init
         context.globalState.update(leetcodeHasInited, true);
+        console.log("LeetCode: Requirements check completed successfully");
         return true;
     }
 
@@ -111,13 +129,13 @@ class LeetCodeExecutor implements Disposable {
         if (!await fse.pathExists(filePath)) {
             await fse.createFile(filePath);
             let codeTemplate: string = await this.executeCommandWithProgressEx("Fetching problem data...", this.nodeExecutable, cmd);
-            
+
             // Add C++ headers if needed
             if (shouldAddHeaders && (language === "cpp" || language === "c")) {
                 const cppHeaders = this.generateCppHeaders();
                 codeTemplate = cppHeaders + codeTemplate;
             }
-            
+
             await fse.writeFile(filePath, codeTemplate);
         }
     }
@@ -187,7 +205,11 @@ class LeetCodeExecutor implements Disposable {
         return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "test", `"${filePath}"`]);
     }
 
-    public async switchEndpoint(endpoint: string): Promise<string> {
+    public async switchEndpoint(_endpoint: string): Promise<string> {
+        // Отключено для избежания конфликтов с оригинальным расширением
+        console.log("LeetCode: Endpoint switching disabled to avoid conflicts");
+        return "Endpoint switching disabled";
+        /*
         switch (endpoint) {
             case Endpoint.LeetCodeCN:
                 return await this.executeCommandEx(this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "plugin", "-e", "leetcode.cn"]);
@@ -195,6 +217,7 @@ class LeetCodeExecutor implements Disposable {
             default:
                 return await this.executeCommandEx(this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "plugin", "-d", "leetcode.cn"]);
         }
+        */
     }
 
     public async toggleFavorite(node: IProblem, addToFavorite: boolean): Promise<void> {
@@ -261,16 +284,16 @@ class LeetCodeExecutor implements Disposable {
             return [];
         }
     }
-    
+
     public async getDailyChallengeHistory(_needTranslation?: boolean, days: number = 30): Promise<any[]> {
         try {
             const https = require('https');
-            
+
             // Получаем данные за последние дни
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(endDate.getDate() - days);
-            
+
             const query = `
                 query dailyCodingQuestionRecords($year: Int!, $month: Int!) {
                     dailyCodingChallengeV2(year: $year, month: $month) {
@@ -300,27 +323,27 @@ class LeetCodeExecutor implements Disposable {
                     }
                 }
             `;
-            
+
             const challenges: any[] = [];
             const processedMonths = new Set<string>();
-            
+
             // Получаем данные для текущего и предыдущего месяца
             for (let i = 0; i <= 1; i++) {
                 const targetDate = new Date();
                 targetDate.setMonth(targetDate.getMonth() - i);
-                
+
                 const year = targetDate.getFullYear();
                 const month = targetDate.getMonth() + 1;
                 const monthKey = `${year}-${month}`;
-                
+
                 if (processedMonths.has(monthKey)) continue;
                 processedMonths.add(monthKey);
-                
+
                 const postData = JSON.stringify({
                     query: query,
                     variables: { year, month }
                 });
-                
+
                 const options = {
                     hostname: 'leetcode.com',
                     port: 443,
@@ -332,7 +355,7 @@ class LeetCodeExecutor implements Disposable {
                         'User-Agent': 'vscode-leetcode-extension'
                     }
                 };
-                
+
                 const response = await new Promise<string>((resolve, reject) => {
                     const req = https.request(options, (res: any) => {
                         let data = '';
@@ -343,15 +366,15 @@ class LeetCodeExecutor implements Disposable {
                             resolve(data);
                         });
                     });
-                    
+
                     req.on('error', (error: any) => {
                         reject(error);
                     });
-                    
+
                     req.write(postData);
                     req.end();
                 });
-                
+
                 const jsonData = JSON.parse(response);
                 if (jsonData.data && jsonData.data.dailyCodingChallengeV2 && jsonData.data.dailyCodingChallengeV2.challenges) {
                     const monthChallenges = jsonData.data.dailyCodingChallengeV2.challenges
@@ -372,14 +395,14 @@ class LeetCodeExecutor implements Disposable {
                                 link: challenge.link
                             };
                         });
-                    
+
                     challenges.push(...monthChallenges);
                 }
             }
-            
+
             // Сортируем по дате (новые сверху)
             challenges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            
+
             // Ограничиваем количество дней
             return challenges.slice(0, days);
         }

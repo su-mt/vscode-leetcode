@@ -1,10 +1,10 @@
 {
-    "name": "vscode-leetcode-fork",
-    "displayName": "LeetCode-fork",
-    "description": "Solve LeetCode problems in VS Code",
+    "name": "vscode-leetcode",
+    "displayName": "LeetCode Enhanced Fork",
+    "description": "Enhanced fork of LeetCode VS Code extension with Daily Challenges and improved functionality",
     "version": "0.18.5",
     "author": "su-mt",
-    "publisher": "su-mt",
+    "publisher": "leetcode",
     "license": "MIT",
     "icon": "resources/LeetCode.png",
     "engines": {
@@ -12,17 +12,19 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/LeetCode-OpenSource/vscode-leetcode"
+        "url": "https://github.com/su-mt/vscode-leetcode"
     },
-    "homepage": "https://github.com/LeetCode-OpenSource/vscode-leetcode/blob/master/README.md",
+    "homepage": "https://github.com/su-mt/vscode-leetcode/blob/feature/daily-challenges/README.md",
     "categories": [
-        "Other",
-        "Snippets"
+        "Education",
+        "Other"
     ],
     "keywords": [
-        "leetcode",
+        "leetcode-enhanced",
+        "coding-practice",
         "algorithm",
-        "interview"
+        "interview",
+        "daily-challenges"
     ],
     "preview": true,
     "activationEvents": [
