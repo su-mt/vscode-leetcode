@@ -100,7 +100,7 @@ class LeetCodeExecutor implements Disposable {
         return await this.executeCommandEx(this.nodeExecutable, cmd);
     }
 
-    public async showProblem(problemNode: IProblem, language: string, filePath: string, showDescriptionInComment: boolean = false, needTranslation: boolean): Promise<void> {
+    public async showProblem(problemNode: IProblem, language: string, filePath: string, showDescriptionInComment: boolean = false, needTranslation: boolean, shouldAddHeaders: boolean = false): Promise<void> {
         const templateType: string = showDescriptionInComment ? "-cx" : "-c";
         const cmd: string[] = [await this.getLeetCodeBinaryPath(), "show", problemNode.id, templateType, "-l", language];
 
@@ -110,7 +110,14 @@ class LeetCodeExecutor implements Disposable {
 
         if (!await fse.pathExists(filePath)) {
             await fse.createFile(filePath);
-            const codeTemplate: string = await this.executeCommandWithProgressEx("Fetching problem data...", this.nodeExecutable, cmd);
+            let codeTemplate: string = await this.executeCommandWithProgressEx("Fetching problem data...", this.nodeExecutable, cmd);
+            
+            // Add C++ headers if needed
+            if (shouldAddHeaders && (language === "cpp" || language === "c")) {
+                const cppHeaders = this.generateCppHeaders();
+                codeTemplate = cppHeaders + codeTemplate;
+            }
+            
             await fse.writeFile(filePath, codeTemplate);
         }
     }
@@ -241,6 +248,166 @@ class LeetCodeExecutor implements Disposable {
         if (await fse.pathExists(oldPath)) {
             await fse.remove(oldPath);
         }
+    }
+
+    public async getTodayProblem(needTranslation?: boolean): Promise<any[]> {
+        try {
+            // Получаем историю daily challenges за последние 30 дней
+            const dailyChallenges = await this.getDailyChallengeHistory(needTranslation, 30);
+            return dailyChallenges;
+        }
+        catch (error) {
+            console.error("Failed to fetch daily challenges:", error);
+            return [];
+        }
+    }
+    
+    public async getDailyChallengeHistory(needTranslation?: boolean, days: number = 30): Promise<any[]> {
+        try {
+            const https = require('https');
+            
+            // Получаем данные за последние дни
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(endDate.getDate() - days);
+            
+            const query = `
+                query dailyCodingQuestionRecords($year: Int!, $month: Int!) {
+                    dailyCodingChallengeV2(year: $year, month: $month) {
+                        challenges {
+                            date
+                            userStatus
+                            link
+                            question {
+                                acRate
+                                difficulty
+                                freqBar
+                                frontendQuestionId: questionFrontendId
+                                isFavor
+                                paidOnly: isPaidOnly
+                                status
+                                title
+                                titleSlug
+                                hasVideoSolution
+                                hasSolution
+                                topicTags {
+                                    name
+                                    id
+                                    slug
+                                }
+                            }
+                        }
+                    }
+                }
+            `;
+            
+            const challenges: any[] = [];
+            const processedMonths = new Set<string>();
+            
+            // Получаем данные для текущего и предыдущего месяца
+            for (let i = 0; i <= 1; i++) {
+                const targetDate = new Date();
+                targetDate.setMonth(targetDate.getMonth() - i);
+                
+                const year = targetDate.getFullYear();
+                const month = targetDate.getMonth() + 1;
+                const monthKey = `${year}-${month}`;
+                
+                if (processedMonths.has(monthKey)) continue;
+                processedMonths.add(monthKey);
+                
+                const postData = JSON.stringify({
+                    query: query,
+                    variables: { year, month }
+                });
+                
+                const options = {
+                    hostname: 'leetcode.com',
+                    port: 443,
+                    path: '/graphql',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(postData),
+                        'User-Agent': 'vscode-leetcode-extension'
+                    }
+                };
+                
+                const response = await new Promise<string>((resolve, reject) => {
+                    const req = https.request(options, (res: any) => {
+                        let data = '';
+                        res.on('data', (chunk: any) => {
+                            data += chunk;
+                        });
+                        res.on('end', () => {
+                            resolve(data);
+                        });
+                    });
+                    
+                    req.on('error', (error: any) => {
+                        reject(error);
+                    });
+                    
+                    req.write(postData);
+                    req.end();
+                });
+                
+                const jsonData = JSON.parse(response);
+                if (jsonData.data && jsonData.data.dailyCodingChallengeV2 && jsonData.data.dailyCodingChallengeV2.challenges) {
+                    const monthChallenges = jsonData.data.dailyCodingChallengeV2.challenges
+                        .filter((challenge: any) => challenge && challenge.question)
+                        .map((challenge: any) => {
+                            const question = challenge.question;
+                            return {
+                                id: question.frontendQuestionId || challenge.link?.split('/').pop() || 'unknown',
+                                name: question.title || 'Unknown Problem',
+                                difficulty: question.difficulty || 'Unknown',
+                                passRate: question.acRate ? `${question.acRate.toFixed(1)}%` : '0%',
+                                tags: (question.topicTags || []).map((tag: any) => tag.name || tag),
+                                companies: [],
+                                isFavorite: question.isFavor || false,
+                                locked: question.paidOnly || false,
+                                state: question.status || "Unknown",
+                                date: challenge.date,
+                                link: challenge.link
+                            };
+                        });
+                    
+                    challenges.push(...monthChallenges);
+                }
+            }
+            
+            // Сортируем по дате (новые сверху)
+            challenges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            
+            // Ограничиваем количество дней
+            return challenges.slice(0, days);
+        }
+        catch (error) {
+            console.error("Failed to fetch daily challenge history:", error);
+            return [];
+        }
+    }
+
+    public generateCppHeaders(): string {
+        return `#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <stack>
+#include <queue>
+#include <deque>
+#include <set>
+#include <map>
+#include <climits>
+#include <cmath>
+#include <numeric>
+#include <functional>
+using namespace std;
+
+`;
     }
 
 }

@@ -85,6 +85,8 @@ export class LeetCodeTreeDataProvider implements vscode.TreeDataProvider<LeetCod
                     return explorerNodeManager.getAllTagNodes();
                 case Category.Company:
                     return explorerNodeManager.getAllCompanyNodes();
+                case Category.Daily:
+                    return explorerNodeManager.getDailyNodes();
                 default:
                     if (element.isProblem) {
                         return [];

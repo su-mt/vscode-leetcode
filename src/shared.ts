@@ -101,6 +101,7 @@ export enum Category {
     Tag = "Tag",
     Company = "Company",
     Favorite = "Favorite",
+    Daily = "Daily",
 }
 
 export const supportedPlugins: string[] = ["company", "solution.discuss", "leetcode.cn"];
