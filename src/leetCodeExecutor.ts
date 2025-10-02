@@ -230,7 +230,7 @@ class LeetCodeExecutor implements Disposable {
 
     public async submitSolution(filePath: string): Promise<string> {
         try {
-            return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "submit", `"${filePath}"`]);
+            return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "submit", filePath]);
         } catch (error) {
             if (error.result) {
                 return error.result;
@@ -241,9 +241,9 @@ class LeetCodeExecutor implements Disposable {
 
     public async testSolution(filePath: string, testString?: string): Promise<string> {
         if (testString) {
-            return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "test", `"${filePath}"`, "-t", `${testString}`]);
+            return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "test", filePath, "-t", testString]);
         }
-        return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "test", `"${filePath}"`]);
+        return await this.executeCommandWithProgressEx("Submitting to LeetCode...", this.nodeExecutable, [await this.getLeetCodeBinaryPath(), "test", filePath]);
     }
 
     public async switchEndpoint(_endpoint: string): Promise<string> {
@@ -266,7 +266,7 @@ class LeetCodeExecutor implements Disposable {
         if (!addToFavorite) {
             commandParams.push("-d");
         }
-        await this.executeCommandWithProgressEx("Updating the favorite list...", "node", commandParams);
+        await this.executeCommandWithProgressEx("Updating the favorite list...", this.nodeExecutable, commandParams);
     }
 
     public async getCompaniesAndTags(): Promise<{ companies: { [key: string]: string[] }, tags: { [key: string]: string[] } }> {
